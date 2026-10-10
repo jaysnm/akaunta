@@ -1,0 +1,127 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: ${PG_CNTR_NAME:-akaunta-pgdb}
+    environment:
+      POSTGRES_USER: ${PG_USER:-postgres}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-Z1ycEdeX38s32ygzumhHvXtZ}
+      POSTGRES_DB: ${PG_DBNAME:-akaunta_pas}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    ports: ['${PG_HOST_IP:-127.0.0.1}:${PG_HOST_PORT:-5432}:5432']
+    volumes: ['${DATA_STORE:-./data}/pgdb:/var/lib/postgresql']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${PG_USER:-akaunta}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    container_name: ${REDIS_CNTR_NAME:-akaunta-redis}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    command:
+      - redis-server
+      - --user
+      - default
+      - 'off'
+      - --user
+      - '${REDIS_USERNAME:-akaunta}'
+      - 'on'
+      - '>${REDIS_PASSWORD:-vY5w3MlCqnMr8PQ8D9IM52so}'
+      - '~*'
+      - '&*'
+      - +@all
+      - --appendonly
+      - 'yes'
+    ports: ['${REDIS_HOST_IP:-127.0.0.1}:${REDIS_HOST_PORT:-6379}:6379']
+    volumes: ['${DATA_STORE:-./data}/redis:/data']
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'redis-cli',
+          '--user',
+          '${REDIS_USERNAME:-akaunta}',
+          '--pass',
+          '${REDIS_PASSWORD:-vY5w3MlCqnMr8PQ8D9IM52so}',
+          '--no-auth-warning',
+          'ping',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mailpit:
+    # Dev-only: captures outgoing email locally instead of sending it. Never
+    # wanted in a real install, which sends through the configured provider.
+    profiles: ['dev']
+    # Mailpit is the maintained successor to the now-archived MailHog; same SMTP/UI ports.
+    image: axllent/mailpit:latest
+    container_name: ${MAILPIT_CNTR_NAME:-akaunta-mailpit}
+    ports: ['${MAILPIT_HOST_IP:-127.0.0.1}:1025:1025', '${MAILPIT_HOST_IP:-127.0.0.1}:8025:8025']
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:8025/readyz']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: ${RESTART_POLICY:-unless-stopped}
+    container_name: ${API_CNTR_NAME:-akaunta-api}
+    env_file: .env
+    # .env's DATABASE_URL/REDIS_URL use localhost for `pnpm dev` on the host, where
+    # Postgres/Redis ports are published — the containerized api instead needs the
+    # Compose service names, so these override the env_file values for it alone.
+    environment:
+      DATABASE_URL: postgres://${PG_USER:-akaunta}:${PG_PASSWORD:-Z1ycEdeX38s32ygzumhHvXtZ}@postgres:5432/${PG_DBNAME:-akaunta_pas}
+      REDIS_URL: redis://${REDIS_USERNAME:-akaunta}:${REDIS_PASSWORD:-vY5w3MlCqnMr8PQ8D9IM52so}@redis:6379
+    # This one IS meant to be reachable from outside the host — it's the app.
+    ports: ['${API_HOST_IP:-127.0.0.1}:3000:3000']
+    # Dockerfile already declares the HEALTHCHECK; repeated here so `depends_on`
+    # elsewhere can key off `service_healthy` without reading the image's build.
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # The URL the *browser* reaches the API at — not a Docker service name,
+        # since the fetch happens client-side, outside the compose network.
+        # Override API_PUBLIC_URL in .env for a deployment reached from other
+        # machines (e.g. your LAN IP or a real domain), not just this host.
+        NEXT_PUBLIC_API_URL: ${API_PUBLIC_URL:-http://localhost:3000}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    container_name: ${WEB_CNTR_NAME:-akaunta-web}
+    ports: ['${WEB_HOST_IP:-127.0.0.1}:3100:3100']
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3100/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    depends_on:
+      api: { condition: service_healthy }

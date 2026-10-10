@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+# Courtesy local guardrail, not a security boundary — see "Keeping tags in sync
+# with main" / branch-protection notes in docs/implementation-plan.md. Real
+# enforcement is GitHub's server-side branch protection.
+branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+if [ "$branch" = "main" ] || [ "$branch" = "master" ]; then
+  echo "Refusing to commit directly to '$branch'. Create a feature branch instead."
+  exit 1
+fi
+
+npx lint-staged

@@ -1,0 +1,21 @@
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+coverage/
+*.log
+*.tsbuildinfo
+
+.env
+docker-compose.override.yml
+
+# self-hosted/dev bind-mount data directories (see docker-compose.yml)
+/data/
+
+*.sqlite
+*.sqlite3
+
+.DS_Store
+.vscode/*
+!.vscode/extensions.json

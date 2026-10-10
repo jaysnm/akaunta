@@ -1,0 +1,22 @@
+{
+  "name": "@akaunta/domain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "fast-check": "^4.10.2",
+    "vitest": "^5.0.3",
+    "typescript": "^6.0.3"
+  }
+}
